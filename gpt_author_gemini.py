@@ -3,7 +3,7 @@ AI-powered Book Generator using Google's Gemini API
 
 This script generates a complete book, including plot, chapters, title, and cover image,
 based on user-provided parameters. It uses the Gemini API for text generation and
-the Stability API for cover image creation.
+the OpenAI DALL-E 3 for cover image creation.
 
 Author: AI Assistant
 Date: 2024-09-30
@@ -11,6 +11,8 @@ Dependencies: google-generativeai, ebooklib, requests
 """
 
 import google.generativeai as genai
+import openai
+from openai import OpenAI
 import os
 import time
 import re
@@ -18,13 +20,15 @@ from ebooklib import epub
 import base64
 import requests
 import argparse
+import markdown2
 
 # Configure Gemini API
 genai.configure(api_key=os.environ["GOOGLE_GEMINI_API_KEY"])
 model = genai.GenerativeModel("gemini-1.5-pro-exp-0827")
 
-# Stability API key for cover image generation
-stability_api_key = "sk-AEVSg3punakzTFShSm5dPFQ3eiXLOeeBDgvfUy7tSvU2Ui5R"  # get it at https://beta.dreamstudio.ai/
+# configure openai
+openai_api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=openai_api_key)
 
 def remove_first_line(test_string):
     """
@@ -84,58 +88,53 @@ def generate_title(plot):
     response = generate_text(f"Here is the plot for the book: {plot}\n\n--\n\nRespond with a great title for this book. Only respond with the title, nothing else is allowed.")
     return remove_first_line(response)
 
-def create_cover_image(plot):
+def create_cover_image(plot, orientation="portrait", quality="standard"):
     """
-    Create a cover image based on the plot using the Stability API.
+    Create a cover image based on the plot using DALL-E 3.
 
     Args:
         plot (str): The plot outline of the book.
+        orientation (str): Either "portrait", "landscape", or "square". Default is "portrait".
+        quality (str): Either "standard" or "hd". Default is "standard".
 
     Raises:
-        Exception: If the Stability API key is missing or the API response is not successful.
+        Exception: If the OpenAI API key is missing or the API response is not successful.
     """
     # Generate the cover description from the plot
     plot = str(generate_cover_prompt(plot))
 
-    engine_id = "stable-diffusion-xl-beta-v2-2-2"
-    api_host = os.getenv('API_HOST', 'https://api.stability.ai')
-    api_key = stability_api_key
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    if api_key is None:
-        raise Exception("Missing Stability API key.")
+    if client.api_key is None:
+        raise Exception("Missing OpenAI API key.")
 
-    # Make a request to the Stability API to generate the cover image
-    response = requests.post(
-        f"{api_host}/v1/generation/{engine_id}/text-to-image",
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        },
-        json={
-            "text_prompts": [
-                {
-                    "text": plot
-                }
-            ],
-            "cfg_scale": 7,
-            "clip_guidance_preset": "FAST_BLUE",
-            "height": 768,
-            "width": 512,
-            "samples": 1,
-            "steps": 30,
-        },
+    # Determine size based on orientation
+    if orientation == "portrait":
+        size = "1024x1792"
+    elif orientation == "landscape":
+        size = "1792x1024"
+    else:  # square
+        size = "1024x1024"
+
+    # Make a request to the DALL-E 3 API to generate the cover image
+    response = client.images.generate(
+        model="dall-e-3",
+        prompt=plot,
+        size=size,
+        quality=quality,
+        n=1,
     )
 
-    if response.status_code != 200:
-        raise Exception("Non-200 response: " + str(response.text))
 
-    data = response.json()
+    image_url = response.data[0].url
 
-    # Decode and save the generated image
-    for i, image in enumerate(data["artifacts"]):
-        with open("cover.png", "wb") as f:  # Update the path if running locally
-            f.write(base64.b64decode(image["base64"]))
+    # Download and save the generated image
+    image_response = requests.get(image_url)
+    if image_response.status_code != 200:
+        raise Exception("Failed to download the image")
+
+    with open("cover.png", "wb") as f:
+        f.write(image_response.content)
 
 def generate_chapter_title(chapter_content):
     """
@@ -180,13 +179,10 @@ def create_epub(title, author, chapters, cover_image_path='cover.png'):
         chapter_file_name = f'chapter_{i+1}.xhtml'
         epub_chapter = epub.EpubHtml(title=chapter_title, file_name=chapter_file_name, lang='en')
         
-        # Add paragraph breaks
-        formatted_content = ''.join(
-            f'<p>{paragraph.strip()}</p>' 
-            for paragraph in chapter_content.split('\n') 
-            if paragraph.strip()
-        )
-        epub_chapter.content = f'<h1>{chapter_title}</h1>{formatted_content}'
+        # Convert Markdown to HTML
+        html_content = markdown2.markdown(chapter_content)
+        
+        epub_chapter.content = f'<h1>{chapter_title}</h1>{html_content}'
         book.add_item(epub_chapter)
         epub_chapters.append(epub_chapter)
     
@@ -291,7 +287,7 @@ def main(writing_style, book_description, num_chapters):
     create_cover_image(plot_outline)
 
     # Create the EPUB file
-    create_epub(title, 'AI', chapters, '/content/cover.png')
+    create_epub(title, 'AI', chapters, 'cover.png')
 
     print(f"Book saved as '{title}.txt' and '{title}.epub'.")
 
