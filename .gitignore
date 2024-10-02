@@ -1,0 +1,8 @@
+.venv_ai_author/
+.env
+config.json
+*.pdf
+*.docx
+*.txt
+!requirements.txt
+__pycache__/
