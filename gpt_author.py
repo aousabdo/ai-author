@@ -1,13 +1,13 @@
 """
-AI-powered Book Generator using OpenAI and Google's Gemini API
+AI-powered Book Generator using OpenAI, Google's Gemini API, and Stability AI
 
 This script generates a complete book, including plot, chapters, title, and cover image,
-based on user-provided parameters. It uses the Gemini API for text generation and
-the OpenAI DALL-E 3 for cover image creation.
+based on user-provided parameters. It uses the OpenAI GPT-4o-mini or Google Gemini API 
+for text generation and Stability AI for cover image creation.
 
 Author: AI Assistant
 Date: 2024-09-30
-Dependencies: google-generativeai, ebooklib, requests
+Dependencies: google-generativeai, ebooklib, requests, openai, markdown2
 """
 
 import os
@@ -30,8 +30,8 @@ if not GOOGLE_GEMINI_API_KEY:
 genai.configure(api_key=GOOGLE_GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-pro-exp-0827")
 
-#configure OpenAI API
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))    
+# Configure OpenAI API
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def remove_first_line(text):
     """
@@ -47,53 +47,6 @@ def remove_first_line(text):
     if lines and lines[0].startswith("Here") and lines[0].strip().endswith(":"):
         return '\n'.join(lines[1:])
     return text
-
-# def generate_text(prompt, max_tokens=4000, temperature=0.7, max_retries=5, initial_delay=1):
-#     """
-#     Generate text using the Gemini API with rate limiting and exponential backoff.
-
-#     Args:
-#         prompt (str): The input prompt for text generation.
-#         max_tokens (int): Maximum number of tokens to generate.
-#         temperature (float): Controls randomness in generation.
-#         max_retries (int): Maximum number of retry attempts.
-#         initial_delay (float): Initial delay between retries in seconds.
-
-#     Returns:
-#         str: The generated text.
-
-#     Raises:
-#         Exception: If the API call fails after all retries.
-#     """
-#     retries = 0
-#     delay = initial_delay
-
-#     while retries < max_retries:
-#         try:
-#             response = model.generate_content(
-#                 prompt,
-#                 generation_config=genai.types.GenerationConfig(
-#                     max_output_tokens=max_tokens,
-#                     temperature=temperature
-#                 )
-#             )
-#             return response.text.strip()
-#         except ResourceExhausted as e:
-#             retries += 1
-#             if retries == max_retries:
-#                 raise Exception(f"Failed to generate text after {max_retries} attempts: {e}")
-            
-#             print(f"ResourceExhausted error (attempt {retries}/{max_retries}): {e}")
-#             print(f"Retrying in {delay:.2f} seconds...")
-            
-#             # Add jitter to avoid synchronized retries
-#             jitter = random.uniform(0, 0.1 * delay)
-#             time.sleep(delay + jitter)
-            
-#             # Exponential backoff with a maximum delay of 60 seconds
-#             delay = min(delay * 2, 60)
-
-#     raise Exception("Unexpected error: Retry loop completed without returning or raising")
 
 def generate_text(prompt, max_tokens=4000, temperature=0.7, max_retries=5, initial_delay=1, llm="openai"):
     """
@@ -487,6 +440,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args.style, args.description, args.chapters, args.genre)
-    
+
 # example usage:
-# python gpt_author_gemini.py --style "descriptive" --description "A story of love and loss" --chapters 10 --genre "romance"
+# python gpt_author.py --style "descriptive" --description "A story of love and loss" --chapters 10 --genre "romance"

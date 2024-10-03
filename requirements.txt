@@ -3,4 +3,3 @@ requests
 google-generativeai
 ebooklib
 markdown2
-litellm
