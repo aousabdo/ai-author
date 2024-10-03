@@ -1,5 +1,5 @@
 """
-AI-powered Book Generator using Google's Gemini API
+AI-powered Book Generator using OpenAI and Google's Gemini API
 
 This script generates a complete book, including plot, chapters, title, and cover image,
 based on user-provided parameters. It uses the Gemini API for text generation and
@@ -30,6 +30,9 @@ if not GOOGLE_GEMINI_API_KEY:
 genai.configure(api_key=GOOGLE_GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-1.5-pro-exp-0827")
 
+#configure OpenAI API
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))    
+
 def remove_first_line(text):
     """
     Remove the first line of the string if it starts with "Here" and ends with ":".
@@ -45,9 +48,56 @@ def remove_first_line(text):
         return '\n'.join(lines[1:])
     return text
 
-def generate_text(prompt, max_tokens=4000, temperature=0.7, max_retries=5, initial_delay=1):
+# def generate_text(prompt, max_tokens=4000, temperature=0.7, max_retries=5, initial_delay=1):
+#     """
+#     Generate text using the Gemini API with rate limiting and exponential backoff.
+
+#     Args:
+#         prompt (str): The input prompt for text generation.
+#         max_tokens (int): Maximum number of tokens to generate.
+#         temperature (float): Controls randomness in generation.
+#         max_retries (int): Maximum number of retry attempts.
+#         initial_delay (float): Initial delay between retries in seconds.
+
+#     Returns:
+#         str: The generated text.
+
+#     Raises:
+#         Exception: If the API call fails after all retries.
+#     """
+#     retries = 0
+#     delay = initial_delay
+
+#     while retries < max_retries:
+#         try:
+#             response = model.generate_content(
+#                 prompt,
+#                 generation_config=genai.types.GenerationConfig(
+#                     max_output_tokens=max_tokens,
+#                     temperature=temperature
+#                 )
+#             )
+#             return response.text.strip()
+#         except ResourceExhausted as e:
+#             retries += 1
+#             if retries == max_retries:
+#                 raise Exception(f"Failed to generate text after {max_retries} attempts: {e}")
+            
+#             print(f"ResourceExhausted error (attempt {retries}/{max_retries}): {e}")
+#             print(f"Retrying in {delay:.2f} seconds...")
+            
+#             # Add jitter to avoid synchronized retries
+#             jitter = random.uniform(0, 0.1 * delay)
+#             time.sleep(delay + jitter)
+            
+#             # Exponential backoff with a maximum delay of 60 seconds
+#             delay = min(delay * 2, 60)
+
+#     raise Exception("Unexpected error: Retry loop completed without returning or raising")
+
+def generate_text(prompt, max_tokens=4000, temperature=0.7, max_retries=5, initial_delay=1, llm="openai"):
     """
-    Generate text using the Gemini API with rate limiting and exponential backoff.
+    Generate text using either OpenAI or Google Gemini API with rate limiting and exponential backoff.
 
     Args:
         prompt (str): The input prompt for text generation.
@@ -55,6 +105,7 @@ def generate_text(prompt, max_tokens=4000, temperature=0.7, max_retries=5, initi
         temperature (float): Controls randomness in generation.
         max_retries (int): Maximum number of retry attempts.
         initial_delay (float): Initial delay between retries in seconds.
+        llm (str): The LLM to use. Either "openai" (default) or "gemini".
 
     Returns:
         str: The generated text.
@@ -67,20 +118,33 @@ def generate_text(prompt, max_tokens=4000, temperature=0.7, max_retries=5, initi
 
     while retries < max_retries:
         try:
-            response = model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=max_tokens,
+            if llm == "openai":
+                print("Using OpenAI GPT-4o-mini model")
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=max_tokens,
                     temperature=temperature
                 )
-            )
-            return response.text.strip()
-        except ResourceExhausted as e:
+                return response.choices[0].message.content.strip()
+            elif llm == "gemini":
+                print("Using Google Gemini 1.5 Pro model")
+                response = model.generate_content(
+                    prompt,
+                    generation_config=genai.types.GenerationConfig(
+                        max_output_tokens=max_tokens,
+                        temperature=temperature
+                    )
+                )
+                return response.text.strip()
+            else:
+                raise ValueError("Invalid LLM specified. Choose 'openai' or 'gemini'.")
+        except (ResourceExhausted, Exception) as e:
             retries += 1
             if retries == max_retries:
                 raise Exception(f"Failed to generate text after {max_retries} attempts: {e}")
             
-            print(f"ResourceExhausted error (attempt {retries}/{max_retries}): {e}")
+            print(f"Error (attempt {retries}/{max_retries}): {e}")
             print(f"Retrying in {delay:.2f} seconds...")
             
             # Add jitter to avoid synchronized retries
@@ -151,9 +215,9 @@ def create_cover_image(plot, orientation="portrait", quality="standard", genre="
     # Generate the cover description from the plot
     plot = str(generate_cover_prompt(plot, genre))
 
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    if client.api_key is None:
+    if openai_client.api_key is None:
         raise Exception("Missing OpenAI API key.")
 
     # Determine size based on orientation
@@ -165,14 +229,13 @@ def create_cover_image(plot, orientation="portrait", quality="standard", genre="
         size = "1024x1024"
 
     # Make a request to the DALL-E 3 API to generate the cover image
-    response = client.images.generate(
+    response = openai_client.images.generate(
         model="dall-e-3",
         prompt=plot,
         size=size,
         quality=quality,
         n=1,
     )
-
 
     image_url = response.data[0].url
 
