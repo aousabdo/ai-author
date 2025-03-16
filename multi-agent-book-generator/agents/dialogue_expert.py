@@ -311,16 +311,17 @@ class DialogueExpertAgent(Agent):
         # use a more sophisticated approach with context
         remaining_issues = []
         for issue in issues:
-            original = issue.get('original', '')
-            if original and original not in chapter:
+            # Use _extract_text here as well to handle dictionaries
+            original_text = self._extract_text(issue.get('original', ''))
+            if original_text and original_text not in chapter:
                 remaining_issues.append(issue)
         
         if remaining_issues:
             # Create a batch prompt that includes all remaining fixes
             issues_text = "\n".join([
                 f"{i+1}. Issue: {issue.get('issue', '')}\n"
-                f"   Original: \"{issue.get('original', '')}\"\n"
-                f"   Improved: \"{issue.get('improved', '')}\""
+                f"   Original: \"{self._extract_text(issue.get('original', ''))}\"\n"
+                f"   Improved: \"{self._extract_text(issue.get('improved', ''))}\""
                 for i, issue in enumerate(remaining_issues)
             ])
             
