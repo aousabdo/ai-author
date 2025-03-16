@@ -129,11 +129,10 @@ def generate_title(plot, genre):
             f"Based on the following plot outline and genre, generate a captivating and genre-appropriate title for the book.\n\n"
             f"Plot Outline:\n{plot}\n\n"
             f"Genre: {genre}\n\n"
-            f"Respond with the best title only, in one sentence, without any additional commentary, formatting, or quotation marks.\n\n"
+            f"Respond with the best title only, in one sentence, without any additional commentary.\n\n"
             f"Title:"
         )
-        # Remove any asterisks and quotation marks from the title
-        return response.strip().replace('*', '').replace('"', '')
+        return response.strip()
     except Exception as e:
         print(f"Error generating title: {e}")
         return "Untitled"
@@ -276,35 +275,7 @@ def generate_chapter_title(chapter_content):
     )
     return remove_first_line(response)
 
-def generate_long_chapter(chapter_prompt, target_words, max_chunks=5):
-    chapter_content = []
-    total_words = 0
-    
-    for i in range(max_chunks):
-        if i == 0:
-            prompt = chapter_prompt
-        else:
-            prompt = f"Continue the chapter from where we left off, aiming for a total of {target_words} words:\n\n{chapter_content[-1]}\n\nContinuation:"
-        
-        try:
-            remaining_words = max(0, target_words - total_words)
-            chunk = generate_text(prompt, max_tokens=min(4000, remaining_words * 4 // 3))
-            chunk = remove_first_line(chunk)
-            chapter_content.append(chunk)
-            total_words += len(chunk.split())
-            print(f"  Chunk {i+1} generated. Total words: {total_words}")
-            
-            if total_words >= target_words * 0.9:  # Allow for 10% under the target
-                break
-        except Exception as e:
-            print(f"Error generating chunk {i+1}: {e}")
-            break
-        
-        time.sleep(1)  # Add a short delay to avoid hitting rate limits
-
-    return "\n\n".join(chapter_content)
-
-# def create_epub(title, author, chapters, cover_image_path='cover.png'):
+def create_epub(title, author, chapters, cover_image_path='cover.png'):
     """
     Create an EPUB file from the generated book content.
 
@@ -376,106 +347,6 @@ def generate_long_chapter(chapter_prompt, target_words, max_chunks=5):
     # Save the EPUB file
     epub.write_epub(f'{title}.epub', book)
     
-def create_epub(title, author, chapters, parsed_outline, cover_image_path='cover.png'):
-    """
-    Create an EPUB file from the generated book content.
-
-    Args:
-        title (str): The title of the book.
-        author (str): The author of the book.
-        chapters (list): A list of chapter contents.
-        parsed_outline (list): A list of dictionaries containing chapter info (title, summary, word_count).
-        cover_image_path (str, optional): Path to the cover image. Defaults to 'cover.png'.
-    """
-    book = epub.EpubBook()
-
-    # Clean the title
-    clean_title = title.replace('"', '').replace('*', '').strip()
-
-    # Set metadata
-    book.set_identifier('id123456')
-    book.set_title(clean_title)
-    book.set_language('en')
-    book.add_author(author)
-
-    # Remove unnecessary metadata
-    book.add_metadata('DC', 'rights', '')
-    book.add_metadata('DC', 'publisher', '')
-
-    # Add cover image
-    with open(cover_image_path, 'rb') as cover_file:
-        cover_image = cover_file.read()
-    book.set_cover('cover.png', cover_image)
-
-    # Create chapters and add them to the book
-    epub_chapters = []
-    for i, (chapter_content, chapter_info) in enumerate(zip(chapters, parsed_outline)):
-        chapter_title = chapter_info['title'].replace('*', '').strip()
-        chapter_file_name = f'chapter_{i+1}.xhtml'
-        epub_chapter = epub.EpubHtml(title=chapter_title, file_name=chapter_file_name, lang='en')
-
-        # Convert Markdown to HTML
-        html_content = markdown2.markdown(chapter_content)
-
-        # Remove the first line if it contains the chapter title
-        content_lines = html_content.split('\n')
-        if content_lines and chapter_title in content_lines[0]:
-            html_content = '\n'.join(content_lines[1:])
-
-        # Only include the content, as the title is already set in the EPUB metadata
-        epub_chapter.content = f'{html_content}'
-        book.add_item(epub_chapter)
-        epub_chapters.append(epub_chapter)
-
-    # Define Table of Contents
-    book.toc = tuple(epub_chapters)
-
-    # Add default NCX and Nav files
-    book.add_item(epub.EpubNcx())
-    book.add_item(epub.EpubNav())
-
-    # Define CSS style
-    style = '''
-    @namespace epub "http://www.idpf.org/2007/ops";
-    body {
-        font-family: Cambria, Liberation Serif, serif;
-        line-height: 1.6;
-        padding: 1em;
-    }
-    h1 {
-        text-align: center;
-        text-transform: uppercase;
-        font-weight: 200;
-        font-size: 2em;
-        margin-bottom: 1em;
-    }
-    h2 {
-        font-size: 1.5em;
-        margin-top: 1em;
-        margin-bottom: 0.5em;
-    }
-    p {
-        margin-bottom: 0.5em;
-    }
-    '''
-
-    # Add CSS file
-    nav_css = epub.EpubItem(
-        uid="style_nav",
-        file_name="style/nav.css",
-        media_type="text/css",
-        content=style
-    )
-    book.add_item(nav_css)
-
-    # Create spine
-    book.spine = ['nav'] + epub_chapters
-
-    # Save the EPUB file
-    epub.write_epub(f'{clean_title}.epub', book)
-
-    print(f"EPUB file '{clean_title}.epub' created successfully.")
-    
 def generate_book_outline(writing_style, book_description, num_chapters, genre):
     outline_prompt = f"""
     Create a detailed chapter-by-chapter outline for a {num_chapters}-chapter {genre} novel 
@@ -508,24 +379,8 @@ def generate_book_outline(writing_style, book_description, num_chapters, genre):
     except Exception as e:
         print(f"Error generating book outline: {e}")
         return None
-    
-def parse_book_outline(outline):
-    chapters = []
-    for chapter in outline.split("\n\n"):
-        lines = chapter.split("\n")
-        # Remove asterisks from the title
-        title = lines[0].split(": ", 1)[1].replace('*', '').strip() if len(lines) > 0 else "Untitled"
-        summary = lines[1].split(": ", 1)[1] if len(lines) > 1 else ""
-        if len(lines) > 2:
-            word_count_str = lines[2].split(": ")[1].replace(",", "").strip()
-            try:
-                word_count = int(word_count_str)
-            except ValueError:
-                word_count = 3000  # Default to 3000 if conversion fails
-        else:
-            word_count = 3000  # Default to 3000 if not specified
-        chapters.append({"title": title, "summary": summary, "word_count": word_count})
-    return chapters
+
+def generate_book(writing_style, book_description, num_chapters, genre):
     """
     Generate a complete book based on the given parameters.
 
@@ -581,51 +436,7 @@ def parse_book_outline(outline):
 
     return plot_outline, book, chapters
 
-def generate_book(writing_style, book_description, num_chapters, genre):
-    print("Generating book outline...")
-    book_outline = generate_book_outline(writing_style, book_description, num_chapters, genre)
-    if not book_outline:
-        raise Exception("Failed to generate book outline")
-
-    parsed_outline = parse_book_outline(book_outline)
-    chapters = []
-
-    for i, chapter_info in enumerate(parsed_outline):
-        print(f"Generating chapter {i+1}: {chapter_info['title']}...")
-        chapter_prompt = f"""
-        Based on the following book outline and chapter summary, write chapter {i+1} of the {genre} novel 
-        in the {writing_style} style. Aim for approximately {chapter_info['word_count']} words.
-
-        Book Outline:
-        {book_outline}
-
-        Current Chapter:
-        Title: {chapter_info['title']}
-        Summary: {chapter_info['summary']}
-        Target Word Count: {chapter_info['word_count']}
-
-        Previous Chapters:
-        {' '.join(chapters)}
-
-        Ensure the chapter aligns with the provided summary, develops characters and plot as outlined, 
-        and maintains the overall narrative flow. Begin writing the chapter content now:
-        """
-
-        try:
-            chapter = generate_long_chapter(chapter_prompt, target_words=chapter_info['word_count'])
-            chapters.append(chapter)
-            print(f"Chapter {i+1} generated. Word count: {len(chapter.split())}")
-        except Exception as e:
-            print(f"Error generating chapter {i+1}: {e}")
-            chapters.append(f"Chapter {i+1} generation failed.")
-        
-        time.sleep(1)  # Add a short delay to avoid hitting rate limits
-
-    print("Compiling the book...")
-    book = "\n\n".join(chapters)
-    print("Book generated!")
-
-    return book_outline, book, chapters
+def main(writing_style, book_description, num_chapters, genre):
     """
     Main function to orchestrate the book generation process.
 
@@ -652,27 +463,6 @@ def generate_book(writing_style, book_description, num_chapters, genre):
 
     print(f"Book saved as '{sanitized_title}.txt' and '{title}.epub'.")
 
-def main(writing_style, book_description, num_chapters, genre):
-    # Generate the book
-    book_outline, book, chapters = generate_book(writing_style, book_description, num_chapters, genre)
-    parsed_outline = parse_book_outline(book_outline)
-
-    title = generate_title(book_outline, genre)
-    clean_title = title.replace('"', '')  # Remove quotation marks
-    sanitized_title = sanitize_filename(clean_title)
-
-    # Save the book to a file
-    with open(f"{sanitized_title}.txt", "w") as file:
-        file.write(book)
-
-    create_cover_image_stability_ai(book_outline, genre)
-
-    # Create the EPUB file
-    create_epub(clean_title, 'AI', chapters, parsed_outline, 'cover.png')
-
-    print(f"Book saved as '{sanitized_title}.txt' and '{clean_title}.epub'.")
-    
-    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a book using AI")
     parser.add_argument("--style", required=True, help="The desired writing style (e.g., 'descriptive', 'concise')")
